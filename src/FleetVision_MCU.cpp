@@ -10,8 +10,10 @@ SYSTEM_MODE(MANUAL);
 SYSTEM_THREAD(ENABLED);
 
 TCPClient client;
+// Hide server IP and port number in a .gitignore file since repo is public
 const char* server = "192.168.1.18";
-int port = 5555; 
+const int port = 5555; 
+
 const int RAW_IMAGE_SIZE = 230400; // bytes
 const int BUFFER_SIZE = 230400*2;
 const int TCP_CHUNK_SIZE = 65535; // max transfer size over TCP (64 kB)
@@ -77,17 +79,29 @@ void transmitTCPData(uint8_t* buffer, int bufferSize, TCPClient& client) {
     // wait for server ack
     unsigned long timeout = millis();
     while (client.available() == 0) {
+      delay(10);
       if (millis() - timeout > 10000) {
         Serial.println("Timed out waiting for response from server.");
         break;
       }
     }
-    char ack[4];
-    client.readBytes(ack, 4); // may need to look at this
-    if (strncmp(ack, "ACK", 3) != 0) {
-      Serial.println("Failed to receive acknowledgement");
+
+    if (client.available() > 0) {
+      char ack[4];
+      client.readBytes(ack, 4); // may need to look at this
+      if (strncmp(ack, "ACK", 3) != 0) {
+        Serial.println("Failed to receive acknowledgement");
+        break;
+      }
+    } else {
+      Serial.println("No response from server.");
       break;
     }
+  }
+
+  // if transmission failed
+  if (bytesSent < bufferSize) {
+    Serial.println("Transmission to TCP server failed.");
   }
 
   Serial.print("Sent " + bytesSent);
@@ -147,6 +161,8 @@ void loop() {
     if(peer1.connected()) {
       BleUuid imageDataCharUUID1(""); // UUID of ESP32CAM-1
       peer1.getCharacteristicByUUID(imageDataChar1, imageDataCharUUID1);
+    } else {
+      Serial.println("Couldn't reconnect to ESP32CAM-1.");
     }
   }
 
@@ -158,6 +174,8 @@ void loop() {
     if(peer2.connected()) {
       BleUuid imageDataCharUUID2(""); // UUID of ESP32CAM-2
       peer2.getCharacteristicByUUID(imageDataChar2, imageDataCharUUID2);
+    } else {
+      Serial.println("Couldn't reconnect to ESP32CAM-2.");
     }
   }
 
@@ -190,3 +208,12 @@ void loop() {
 // https://www.omnicalculator.com/other/image-file-size
 // Total data sent per frame = 0.2304 * 2 + 1 byte (string)
 //                           = 0.4608 MB
+
+/* 
+TODO :
+-> For failed transmission and connection requests, add retries
+-> Return value of BLE.scan() to ensure the scan was successful
+-> Handle errors/disconnections from TCP server better
+-> Serial.print("" + x); may lead to memory allocation issues. better to separate into Serial.print(""); Serial.print(x);
+->
+*/
